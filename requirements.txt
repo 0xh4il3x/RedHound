@@ -1,0 +1,15 @@
+# RedHound Requirements
+# No external dependencies needed for core functionality
+# Optional dependencies for enhanced features:
+
+# For YAML output support
+PyYAML>=6.0
+
+# For HTML report generation
+jinja2>=3.0.0
+
+# For network scanning features (optional)
+requests>=2.28.0
+
+# For container image analysis (optional)
+docker>=6.0.0
