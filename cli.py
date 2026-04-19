@@ -193,7 +193,7 @@ class RedHoundCLI:
 
 
     def verify_command(args):
-       """Run verification tests"""
+        """Run verification tests"""
         verifier = PoCVerifier()
 
         print(f"{Colors.BOLD}=== RedHound Exploitability Verification ==={Colors.END}\n")
