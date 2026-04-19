@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 RedHound - Red Team Container Assessment Framework
-
-Command Line Interface
+Command-line interface
 """
 
 import argparse
@@ -15,8 +14,14 @@ from typing import List, Dict, Any
 from scanner.base import Finding, Severity, Exploitability
 from scanner.capabilities import CapabilityScanner
 from scanner.sockets import SocketScanner
+from scanner.mounts import MountScanner
+from scanner.namespaces import NamespaceScanner
+from scanner.cgroups import CgroupScanner
+from scanner.cloud import CloudMetadataScanner
+from scanner.k8s import KubernetesScanner
+from scanner.cves import CVEScanner
 from utils.colors import Colors
-from exploit.verifier import PoCVerifier, Verdict
+from exploit.verifier import PoCVerifier, Verdict, VerificationResult
 
 
 class RedHoundCLI:
@@ -31,7 +36,12 @@ class RedHoundCLI:
         scanner_map = {
             "capabilities": CapabilityScanner,
             "sockets": SocketScanner,
-            # Add more scanners here
+            "mounts": MountScanner,
+            "namespaces": NamespaceScanner,
+            "cgroups": CgroupScanner,
+            "cloud": CloudMetadataScanner,
+            "k8s": KubernetesScanner,
+            "cves": CVEScanner,
         }
         
         if modules is None:
@@ -192,57 +202,58 @@ class RedHoundCLI:
         return "\n".join(output)
 
 
-    def verify_command(args):
-        """Run verification tests"""
-        verifier = PoCVerifier()
-
-        print(f"{Colors.BOLD}=== RedHound Exploitability Verification ==={Colors.END}\n")
+def verify_command(args):
+    """Run verification tests"""
+    verifier = PoCVerifier()
     
-        if args.module == "all" or args.module == "capabilities":
-            print(f"{Colors.BOLD}Testing CAP_SYS_ADMIN...{Colors.END}")
-            result = verifier.verify_cap_sys_admin()
-            print_result(result)
-
-        if args.module == "all" or args.module == "sockets":
-            print(f"{Colors.BOLD}Testing Docker Socket...{Colors.END}")
-            result = verifier.verify_docker_socket_access()
-            print_result(result)
-
-        if args.module == "all" or args.module == "cgroups":
-            print(f"{Colors.BOLD}Testing Cgroup Release Agent...{Colors.END}")
-            result = verifier.verify_cgroup_release_agent()
-            print_result(result)
-
-        if args.module == "all" or args.module == "procfs":
-            print(f"{Colors.BOLD}Testing ProcFS Escape...{Colors.END}")
-            result = verifier.verify_procfs_escape()
-            print_result(result)
-
-        if args.module == "all" or args.module == "cloud":
-            print(f"{Colors.BOLD}Testing Cloud Metadata...{Colors.END}")
-            result = verifier.verify_cloud_metadata_access(
+    print(f"{Colors.BOLD}=== RedHound Exploitability Verification ==={Colors.END}\n")
+    
+    if args.module == "all" or args.module == "capabilities":
+        print(f"{Colors.BOLD}Testing CAP_SYS_ADMIN...{Colors.END}")
+        result = verifier.verify_cap_sys_admin()
+        print_result(result)
+    
+    if args.module == "all" or args.module == "sockets":
+        print(f"{Colors.BOLD}Testing Docker Socket...{Colors.END}")
+        result = verifier.verify_docker_socket_access()
+        print_result(result)
+    
+    if args.module == "all" or args.module == "cgroups":
+        print(f"{Colors.BOLD}Testing Cgroup Release Agent...{Colors.END}")
+        result = verifier.verify_cgroup_release_agent()
+        print_result(result)
+    
+    if args.module == "all" or args.module == "procfs":
+        print(f"{Colors.BOLD}Testing ProcFS Escape...{Colors.END}")
+        result = verifier.verify_procfs_escape()
+        print_result(result)
+    
+    if args.module == "all" or args.module == "cloud":
+        print(f"{Colors.BOLD}Testing Cloud Metadata...{Colors.END}")
+        result = verifier.verify_cloud_metadata_access(
             "http://169.254.169.254/latest/meta-data/"
-            )
-            print_result(result)
+        )
+        print_result(result)
+    
+    verifier.cleanup()
 
-        verifier.cleanup()
 
-    def print_result(result: VerificationResult):
-        """Print verification result with color"""
-        color_map = {
-            Verdict.EXPLOITABLE: Colors.RED,
-            Verdict.VULNERABLE: Colors.YELLOW,
-            Verdict.SAFE: Colors.GREEN,
-            Verdict.BLOCKED: Colors.BLUE,
-            Verdict.INCONCLUSIVE: Colors.WHITE,
-        }
-
-        color = color_map[result.verdict]
-        print(f"  {color}Verdict: {result.verdict.value}{Colors.END}")
-        print(f"  Details: {result.details}")
-        if result.evidence:
-            print(f"  Evidence: {result.evidence[:200]}")
-        print()
+def print_result(result: VerificationResult):
+    """Print verification result with color"""
+    color_map = {
+        Verdict.EXPLOITABLE: Colors.RED,
+        Verdict.VULNERABLE: Colors.YELLOW,
+        Verdict.SAFE: Colors.GREEN,
+        Verdict.BLOCKED: Colors.BLUE,
+        Verdict.INCONCLUSIVE: Colors.WHITE,
+    }
+    
+    color = color_map[result.verdict]
+    print(f"  {color}Verdict: {result.verdict.value}{Colors.END}")
+    print(f"  Details: {result.details}")
+    if result.evidence:
+        print(f"  Evidence: {result.evidence[:200]}")
+    print()
 
 
 def main():
@@ -256,19 +267,27 @@ Examples:
   redhound scan --modules capabilities    # Run only capability scanner
   redhound scan --format json             # Output JSON report
   redhound scan --format markdown -o report.md  # Save to file
+  redhound verify --module capabilities   # Verify specific attack vector
         """
     )
     
-    parser.add_argument("command", choices=["scan"], help="Command to execute")
-    parser.add_argument("--verify", action="store_true", 
-                       help="Verify exploitability with safe PoC tests")
-    parser.add_argument("--modules", nargs="+", 
-                       choices=["capabilities", "sockets", "mounts", "namespaces", "cgroups", "cloud", "k8s", "cves"],
-                       help="Specific modules to run")
-    parser.add_argument("--format", choices=["terminal", "json", "markdown"], 
-                       default="terminal", help="Output format")
-    parser.add_argument("-o", "--output", help="Output file (default: stdout)")
-    parser.add_argument("command", choices=["scan", "verify"], help="Command to execute")
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute", required=True)
+    
+    # Scan command
+    scan_parser = subparsers.add_parser("scan", help="Run security scan")
+    scan_parser.add_argument("--verify", action="store_true",
+                             help="Verify exploitability with safe PoC tests")
+    scan_parser.add_argument("--modules", nargs="+",
+                             choices=["capabilities", "sockets", "mounts", "namespaces", "cgroups", "cloud", "k8s", "cves"],
+                             help="Specific modules to run")
+    scan_parser.add_argument("--format", choices=["terminal", "json", "markdown"],
+                             default="terminal", help="Output format")
+    scan_parser.add_argument("-o", "--output", help="Output file (default: stdout)")
+    
+    # Verify command
+    verify_parser = subparsers.add_parser("verify", help="Run exploitability verification")
+    verify_parser.add_argument("--module", choices=["all", "capabilities", "sockets", "cgroups", "procfs", "cloud"],
+                               default="all", help="Module to verify")
     
     args = parser.parse_args()
     
@@ -289,6 +308,9 @@ Examples:
         if critical_count > 0:
             sys.exit(1)
         sys.exit(0)
+    
+    elif args.command == "verify":
+        verify_command(args)
 
 
 if __name__ == "__main__":
